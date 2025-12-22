@@ -59,17 +59,31 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
     <style>
-        body { 
+        html, body { 
+            height: 100%; 
+            width: 100%;
+            margin: 0;
+            padding: 0;
             -webkit-tap-highlight-color: transparent; 
             font-family: 'Inter', sans-serif;
             background-color: #050511;
             color: #ffffff;
-            overflow: hidden; /* Prevent body scroll, handle in root */
+            overflow: hidden; /* Lock body scroll, scroll #root instead */
         }
         
-        /* Custom Scrollbar */
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        #root {
+            height: 100%;
+            width: 100%;
+            overflow-y: auto; /* Scroll vertically */
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch; /* Enable momentum scrolling on iOS */
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Custom Scrollbar - Hidden but scrollable */
+        #root::-webkit-scrollbar { display: none; }
+        #root { -ms-overflow-style: none; scrollbar-width: none; }
 
         /* Animation */
         .animate-enter { animation: enter 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; opacity: 0; transform: translateY(8px) scale(0.98); }
@@ -127,7 +141,7 @@
         <div class="absolute bottom-[-10%] left-[20%] w-96 h-96 bg-pink-600/20 rounded-full mix-blend-screen blur-[100px] animate-blob animation-delay-4000"></div>
     </div>
 
-    <div id="root" class="h-full overflow-y-auto hide-scrollbar relative z-10"></div>
+    <div id="root"></div>
 
     <script type="text/babel" data-type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
