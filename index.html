@@ -757,7 +757,7 @@
             const [editForm, setEditForm] = useState({ name: '', limit: '', balance: '', icon: '' });
 
             const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem('gemini_key') || '');
-            const [aiModel, setAiModel] = useState(() => localStorage.getItem('ai_model') || 'gemini-1.5-flash');
+            const [aiModel, setAiModel] = useState(() => localStorage.getItem('ai_model') || 'gemini-2.5-flash');
             const [chatHistory, setChatHistory] = useState([{ role: 'model', text: "Hi! I'm Gemini. I can analyze spending and track receipts! 📊" }]);
             const [chatInput, setChatInput] = useState('');
             const [isThinking, setIsThinking] = useState(false);
@@ -1504,12 +1504,11 @@
                                     <input type="password" value={geminiKey} onChange={e => { setGeminiKey(e.target.value); localStorage.setItem('gemini_key', e.target.value); }} placeholder="Paste Key..." className="w-full p-4 bg-black/50 border border-glass-200 rounded-xl text-white text-sm mb-4 font-mono focus:border-neon-purple transition-all" />
                                     <label className="text-xs font-bold text-neon-purple uppercase mb-3 block">Model Version</label>
                                     <select value={aiModel} onChange={e => { setAiModel(e.target.value); localStorage.setItem('ai_model', e.target.value); }} className="w-full p-4 bg-black/50 border border-glass-200 rounded-xl text-white text-sm font-bold appearance-none">
-                                        <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast)</option>
-                                        <option value="gemini-1.5-pro">Gemini 1.5 Pro (Smart)</option>
-                                        <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Exp)</option>
-                                        <option value="gemini-2.5-flash">Gemini 2.5 Flash (Future)</option>
-                                        <option value="gemini-3.0-flash-preview">Gemini 3.0 Flash (Alpha)</option>
-                                        <option value="gemini-3.0-pro-preview">Gemini 3.0 Pro (Alpha)</option>
+                                        <option value="gemini-3.0-pro-preview">Gemini 3.0 Pro (Preview)</option>
+                                        <option value="gemini-3.0-flash-preview">Gemini 3.0 Flash (Preview)</option>
+                                        <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                                        <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                                        <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
                                     </select>
                                 </div>
                                 <button onClick={handleTuneUp} className="w-full glass-card p-5 rounded-2xl text-neon-purple font-bold text-sm flex items-center justify-center gap-2 border-neon-purple/30 hover:bg-neon-purple/10 hover:scale-[1.02] transition-all"><Icon name="sliders" /> Auto-Tune Budget (Agent)</button>
@@ -1657,22 +1656,28 @@
                                         <span>Avg: <span className="text-white font-bold">${dailySpendingData.avg.toFixed(0)}</span>/day</span>
                                         <span>Max: <span className="text-neon-red font-bold">${dailySpendingData.max.toFixed(0)}</span></span>
                                     </div>
-                                    <div className="flex items-end justify-between h-32 gap-0.5 overflow-x-auto">
+                                    <div className={`flex items-end justify-between h-32 gap-0.5 ${chartRange === 30 ? 'overflow-x-auto pb-1' : ''}`}>
                                         {dailySpendingData.days.map((d, i) => {
                                             const isToday = i === dailySpendingData.days.length - 1;
                                             const barColor = d.isAboveAvg ? 'bg-neon-red' : 'bg-neon-green';
+                                            // For 30D view, show labels every 7 days (weekly markers)
+                                            const showLabel = chartRange <= 14 || (chartRange === 30 && (i === 0 || (i + 1) % 7 === 0 || isToday));
                                             return (
-                                                <div key={i} className="flex flex-col items-center gap-1 flex-1 min-w-[12px] group relative">
+                                                <div key={i} className={`flex flex-col items-center gap-1 flex-1 group relative ${chartRange === 30 ? 'min-w-[10px]' : 'min-w-[12px]'}`}>
                                                     <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-black/90 px-2 py-1 rounded text-[10px] font-bold text-white opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
                                                         ${d.total.toFixed(0)}
                                                     </div>
                                                     <div className="w-full relative h-24 flex items-end">
                                                         <div
                                                             className={`w-full rounded-t transition-all duration-500 ${barColor} ${isToday ? 'shadow-[0_0_15px_currentColor]' : ''}`}
-                                                            style={{ height: `${Math.max(d.pct, 4)}%`, opacity: isToday ? 1 : 0.7 }}
+                                                            style={{ height: `${Math.max(d.pct, d.total > 0 ? 8 : 4)}%`, opacity: isToday ? 1 : 0.7 }}
                                                         ></div>
                                                     </div>
-                                                    {chartRange <= 14 && <span className={`text-[8px] font-bold ${isToday ? 'text-white' : 'text-slate-600'}`}>{d.dayNum}</span>}
+                                                    {showLabel && (
+                                                        <span className={`text-[7px] font-bold ${isToday ? 'text-white' : chartRange === 30 ? 'text-slate-500' : 'text-slate-600'}`}>
+                                                            {d.dayNum}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             );
                                         })}
