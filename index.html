@@ -231,6 +231,21 @@
             }
         }
 
+        /* Subtle Category Card Animation - No opacity fade */
+        .card-appear {
+            animation: cardAppear 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+
+        @keyframes cardAppear {
+            from {
+                transform: scale(0.98);
+            }
+
+            to {
+                transform: scale(1);
+            }
+        }
+
         /* Stagger Delays */
         .stagger-1 {
             animation-delay: 0.05s;
@@ -1204,7 +1219,7 @@
 
             return (
                 <div className="pb-32 max-w-md mx-auto min-h-screen relative z-10">
-                    <div className="sticky top-0 glass-nav p-4 flex justify-between items-center z-50 rounded-b-3xl mx-2 mt-2 border-b border-glass-100 no-print">
+                    <div className="sticky top-0 glass-nav p-4 flex justify-between items-center z-50 rounded-b-3xl mx-2 border-b border-glass-100 no-print">
                         <div className="flex items-center gap-2.5 font-bold tracking-tight">
                             <div className="bg-gradient-to-tr from-neon-green to-neon-blue text-black p-2 rounded-xl shadow-[0_0_15px_rgba(0,255,157,0.5)]"><Icon name="wallet" size={20} /></div>
                             <span className="text-lg text-white font-bold tracking-wide">BudgetFlow</span>
@@ -1257,7 +1272,7 @@
                                         const strokeDashoffset = circumference - (pct / 100) * circumference;
                                         return (
                                             <div key={cat.id}
-                                                className={`glass-card p-5 rounded-3xl transition-all duration-300 tap-feedback animate-enter stagger-${idx % 4 + 1} ${isLow ? 'border-neon-red/30 shadow-[0_0_30px_rgba(255,0,85,0.1)]' : isWarning ? 'border-yellow-400/20' : 'hover:border-white/20 hover:scale-[1.01]'}`}
+                                                className={`glass-card p-5 rounded-3xl transition-all duration-300 tap-feedback card-appear ${isLow ? 'border-neon-red/30 shadow-[0_0_30px_rgba(255,0,85,0.1)]' : isWarning ? 'border-yellow-400/20' : 'hover:border-white/20 hover:scale-[1.01]'}`}
                                             >
                                                 <div className="flex justify-between items-center">
                                                     <div className="flex items-center gap-4">
