@@ -530,6 +530,105 @@
             }
         }
 
+        /* Modern dark workspace: these rules deliberately sit last so legacy utility
+           classes stay functional without keeping the old neon/glass presentation. */
+        :root {
+            --app-bg: #0a0d12;
+            --app-bg-soft: #10151d;
+            --panel: rgba(20, 27, 37, 0.96);
+            --panel-soft: rgba(148, 163, 184, 0.075);
+            --panel-hover: rgba(148, 163, 184, 0.12);
+            --border: rgba(148, 163, 184, 0.16);
+            --border-strong: rgba(226, 232, 240, 0.28);
+            --radius-xl: 18px;
+            --radius-lg: 14px;
+            --radius-md: 10px;
+            --shadow-panel: 0 14px 32px rgba(0, 0, 0, 0.2);
+            --shadow-soft: 0 8px 22px rgba(0, 0, 0, 0.18);
+        }
+
+        body {
+            background: #0a0d12;
+            overflow: auto;
+            color-scheme: dark;
+        }
+
+        #root { min-height: 100vh; height: auto; overflow: visible; }
+        .liquid-bg, .orb { display: none; }
+        .glass-card, .glass-nav {
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            box-shadow: var(--shadow-panel);
+        }
+        .glass-card::before { pointer-events: none; }
+        .glass-card:hover { transform: none; box-shadow: var(--shadow-panel); }
+        .glass-card:active { transform: none; }
+        button { touch-action: manipulation; }
+        button:hover { transform: none; }
+        button[class*="hover:scale"]:hover { transform: none !important; }
+        button[class*="shadow-"] { box-shadow: none !important; }
+        button:focus-visible, input:focus-visible, select:focus-visible {
+            outline: 3px solid rgba(56, 189, 248, 0.45);
+            outline-offset: 2px;
+        }
+        button:disabled { cursor: not-allowed; filter: saturate(0.55); }
+        .app-shell { width: min(100%, 1180px); padding-bottom: 104px; }
+        .premium-hero {
+            background: linear-gradient(135deg, #16202b 0%, #111821 60%, #10201e 100%);
+            border-color: rgba(52, 211, 153, 0.22);
+        }
+        .premium-metric { min-height: 112px; }
+        .premium-toolbar { background: #121923; border-radius: 14px; }
+        .bottom-nav {
+            width: min(calc(100% - 24px), 430px);
+            bottom: 12px !important;
+            border-radius: 16px;
+            background: rgba(18, 25, 35, 0.98);
+            display: grid !important;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            box-sizing: border-box;
+        }
+        .bottom-nav button { min-width: 0; width: 100%; }
+        select, option { background-color: #151d28 !important; color: #f8fafc !important; color-scheme: dark; }
+        .desktop-rail { display: none !important; }
+        .quick-entry-button { min-height: 42px; }
+        .modal-surface { background: #151d28; border: 1px solid var(--border-strong); box-shadow: 0 28px 80px rgba(0, 0, 0, 0.48); }
+        .status-good { color: #6ee7b7; }
+        .status-watch { color: #fcd34d; }
+        .status-risk { color: #fda4af; }
+
+        @media (min-width: 768px) {
+            .app-shell { width: min(100%, 720px); padding-bottom: 104px; }
+            .app-shell > .sticky { margin: 12px 14px 0; border-radius: 14px; }
+        }
+
+        /* Phone-first interaction: no bouncing, scaling, or reflow on tap. */
+        .tap-feedback, .card-appear, .animate-enter, .streak-flame, .pulse-glow,
+        .cycle-renew-banner, .fab-pulse, .empty-float {
+            animation: none !important;
+            transform: none !important;
+        }
+        .animate-enter { opacity: 1 !important; }
+        .glass-card, .glass-card *, .bottom-nav, .bottom-nav *, button, button *, svg circle {
+            transition: none !important;
+        }
+        .category-spend-button {
+            width: 44px;
+            height: 44px;
+            flex: 0 0 44px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .category-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 44px 84px;
+            align-items: center;
+            column-gap: 8px;
+        }
+        .category-details { min-width: 0; }
+        .category-balance { min-width: 84px; text-align: right; }
+
         /* Print Styles */
         @media print {
             .liquid-bg, .glass-nav, .no-print { display: none !important; }
@@ -808,6 +907,28 @@
             const [showSplitTx, setShowSplitTx] = useState(false);
             const [splitParts, setSplitParts] = useState([{ categoryId: '', amount: '', description: '' }]);
             const [splitTotalLabel, setSplitTotalLabel] = useState('');
+            const [quickEntry, setQuickEntry] = useState({ open: false, type: 'expense', categoryId: '', amount: '', description: '' });
+            const [isConfirming, setIsConfirming] = useState(false);
+            const toastTimerRef = useRef(null);
+            const limitOverrideRef = useRef(false);
+
+            // Legacy controls live in several forms. Give every untyped button a safe
+            // default so selecting a category or closing a modal never submits a form.
+            useEffect(() => {
+                document.querySelectorAll('button:not([type])').forEach(button => { button.type = 'button'; });
+            });
+            useEffect(() => () => clearTimeout(toastTimerRef.current), []);
+            useEffect(() => {
+                const closeTopLayer = (event) => {
+                    if (event.key !== 'Escape') return;
+                    setQuickEntry(entry => ({ ...entry, open: false }));
+                    setEditingTx(null);
+                    setConfirmAction(null);
+                    setShowSplitTx(false);
+                };
+                window.addEventListener('keydown', closeTopLayer);
+                return () => window.removeEventListener('keydown', closeTopLayer);
+            }, []);
 
             // --- Computed cycle values ---
             const cycleEnd = useMemo(() => getNextSunday(cycleStartDate), [cycleStartDate]);
@@ -1047,12 +1168,12 @@
                     const r = await callGemini(`Extract JSON {amount, description, categoryId} from "${magicText}". IDs: ${JSON.stringify(categories.map(c => ({ id: c.id, name: c.name })))}`);
                     const d = JSON.parse(cleanJson(r));
                     if (d.amount) setNewTransaction({ ...newTransaction, amount: d.amount, description: d.description, categoryId: d.categoryId || categories[0].id });
-                } catch (e) { alert("Failed to parse"); } setIsThinking(false); setMagicText('');
+                } catch (e) { showToast('Could not understand that entry', true); } setIsThinking(false); setMagicText('');
             };
 
             const handleVoiceInput = () => {
                 if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-                    alert("Voice not supported on this browser."); return;
+                    showToast('Voice input is not supported in this browser', true); return;
                 }
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
                 const recognition = new SpeechRecognition();
@@ -1072,13 +1193,13 @@
 
             const handleScan = (e) => {
                 const f = e.target.files[0]; if (!f) return; const r = new FileReader();
-                r.onload = async (ev) => { setIsThinking(true); try { const b64 = ev.target.result.split(',')[1]; const r = await callGemini(`Scan receipt. JSON {amount, description, categoryId}. IDs: ${JSON.stringify(categories.map(c => ({ id: c.id, name: c.name })))}`, b64); const d = JSON.parse(cleanJson(r)); setNewTransaction({ ...newTransaction, amount: d.amount, description: d.description, categoryId: d.categoryId || categories[0].id }); } catch (e) { alert("Scan Error"); } setIsThinking(false); }; r.readAsDataURL(f);
+                r.onload = async (ev) => { setIsThinking(true); try { const b64 = ev.target.result.split(',')[1]; const r = await callGemini(`Scan receipt. JSON {amount, description, categoryId}. IDs: ${JSON.stringify(categories.map(c => ({ id: c.id, name: c.name })))}`, b64); const d = JSON.parse(cleanJson(r)); setNewTransaction({ ...newTransaction, amount: d.amount, description: d.description, categoryId: d.categoryId || categories[0].id }); } catch (e) { showToast('Receipt scan could not be completed', true); } setIsThinking(false); }; r.readAsDataURL(f);
             };
 
-            const handleTuneUp = async () => { setIsThinking(true); setShowTuneUp(true); try { const r = await callGemini(`Audit spending. JSON [{"id","newLimit","reason"}]. Context: ${JSON.stringify({ cats: categories, tx: transactions.slice(0, 50) })}`); setTuneUpProposals(JSON.parse(cleanJson(r))); } catch (e) { alert("Audit Failed"); setShowTuneUp(false); } setIsThinking(false); };
+            const handleTuneUp = async () => { setIsThinking(true); setShowTuneUp(true); try { const r = await callGemini(`Audit spending. JSON [{"id","newLimit","reason"}]. Context: ${JSON.stringify({ cats: categories, tx: transactions.slice(0, 50) })}`); setTuneUpProposals(JSON.parse(cleanJson(r))); } catch (e) { showToast('Budget audit could not be completed', true); setShowTuneUp(false); } setIsThinking(false); };
 
             const handleReportCard = async () => {
-                if (!geminiKey) { alert("Please enter your Gemini API Key in Settings first."); setView('settings'); return; }
+                if (!geminiKey) { showToast('Add a Gemini API key in Settings to use AI tools', true); setView('settings'); return; }
                 setView('ai');
                 setIsThinking(true);
                 setReportCard(null);
@@ -1096,8 +1217,9 @@
             const [showConfetti, setShowConfetti] = useState(false);
 
             const showToast = (message, error = false, type = '', actionLabel = '', onAction = null) => {
+                clearTimeout(toastTimerRef.current);
                 setToast({ show: true, message, error, type, actionLabel, onAction });
-                setTimeout(() => setToast({ show: false, message: '', error: false, type: '' }), 3000);
+                toastTimerRef.current = setTimeout(() => setToast({ show: false, message: '', error: false, type: '' }), 4200);
             };
 
             const triggerConfetti = () => {
@@ -1107,6 +1229,55 @@
 
             const requestConfirm = (title, message, onConfirm, confirmLabel = 'Confirm') => {
                 setConfirmAction({ title, message, onConfirm, confirmLabel });
+            };
+
+            const runConfirmAction = async () => {
+                if (!confirmAction || isConfirming) return;
+                setIsConfirming(true);
+                try {
+                    const action = confirmAction.onConfirm;
+                    setConfirmAction(null);
+                    await action();
+                } catch (error) {
+                    showToast('That action could not be completed. Please try again.', true);
+                } finally {
+                    setIsConfirming(false);
+                }
+            };
+
+            const openQuickEntry = (type = 'expense', categoryId = '') => {
+                setQuickEntry({ open: true, type, categoryId: categoryId || categories[0]?.id || '', amount: '', description: '' });
+            };
+
+            const saveQuickEntry = async (event) => {
+                event.preventDefault();
+                const category = categories.find(c => c.id === quickEntry.categoryId);
+                const amount = parseFloat(quickEntry.amount);
+                if (!category || !Number.isFinite(amount) || amount <= 0) {
+                    showToast('Choose a category and enter an amount', true);
+                    return;
+                }
+                const isExpense = quickEntry.type === 'expense';
+                const transaction = {
+                    id: Date.now().toString(), date: new Date().toISOString(), amount,
+                    description: quickEntry.description.trim() || (isExpense ? 'Expense' : 'Income'),
+                    categoryId: category.id, categoryName: category.name,
+                    type: isExpense ? 'expense' : 'income', recurring: 'none', tags: [],
+                    createdAt: new Date().toISOString()
+                };
+                const nextCategories = categories.map(c => c.id === category.id ? { ...c, balance: c.balance + (isExpense ? -amount : amount) } : c);
+                const nextTransactions = [transaction, ...transactions];
+                if (isOffline) {
+                    saveLocal(nextCategories, nextTransactions, weeksTracked);
+                } else {
+                    const batch = db.batch();
+                    batch.set(db.collection('artifacts').doc(APP_ID).collection('users').doc(user.uid).collection('categories').doc(category.id), nextCategories.find(c => c.id === category.id));
+                    batch.set(db.collection('artifacts').doc(APP_ID).collection('users').doc(user.uid).collection('transactions').doc(transaction.id), transaction);
+                    await batch.commit();
+                    saveLocal(nextCategories, nextTransactions, weeksTracked);
+                }
+                setQuickEntry({ open: false, type: 'expense', categoryId: '', amount: '', description: '' });
+                showToast(`${isExpense ? 'Expense' : 'Income'} saved to ${category.name}`);
             };
 
             const applyTransactionImpact = (cats, tx, direction = 1) => {
@@ -1125,18 +1296,27 @@
                 const amt = parseFloat(newTransaction.amount); const isExp = (newTransaction.type || 'expense') === 'expense';
                 
                 // Check spending limits
-                if (isExp && txAlertThreshold > 0 && amt > txAlertThreshold) {
-                    if (!confirm(`⚠️ This transaction ($${amt.toFixed(2)}) exceeds your alert threshold of $${txAlertThreshold.toFixed(2)}. Proceed?`)) return;
+                if (isExp && txAlertThreshold > 0 && amt > txAlertThreshold && !limitOverrideRef.current) {
+                    requestConfirm('Large transaction', `$${amt.toFixed(2)} is above your alert threshold of $${txAlertThreshold.toFixed(2)}. Save it anyway?`, async () => {
+                        limitOverrideRef.current = true;
+                        await handleAdd({ preventDefault: () => {} });
+                    }, 'Save anyway');
+                    return;
                 }
                 if (isExp && dailySpendLimit > 0) {
                     const todayStr = new Date().toISOString().slice(0, 10);
                     const todaySpent = transactions.filter(t => t.date && t.date.slice(0, 10) === todayStr && t.type === 'expense' && t.categoryId !== 'system')
                         .reduce((s, t) => s + parseFloat(t.amount), 0);
-                    if (todaySpent + amt > dailySpendLimit) {
-                        if (!confirm(`⚠️ This will put you over your daily limit ($${(todaySpent + amt).toFixed(0)} / $${dailySpendLimit.toFixed(0)}). Proceed?`)) return;
+                    if (todaySpent + amt > dailySpendLimit && !limitOverrideRef.current) {
+                        requestConfirm('Daily limit reached', `This takes today's spending to $${(todaySpent + amt).toFixed(0)} against your $${dailySpendLimit.toFixed(0)} limit. Save it anyway?`, async () => {
+                            limitOverrideRef.current = true;
+                            await handleAdd({ preventDefault: () => {} });
+                        }, 'Save anyway');
+                        return;
                     }
                 }
 
+                limitOverrideRef.current = false;
                 const bal = isExp ? c.balance - amt : c.balance + amt;
                 const tx = { id: Date.now().toString(), date: new Date().toISOString(), amount: amt, description: newTransaction.description || (isExp ? 'Expense' : 'Income'), categoryId: c.id, categoryName: c.name, type: isExp ? 'expense' : 'income', recurring: newTransaction.recurring || 'none', tags: newTransaction.tags || [] };
                 const nc = categories.map(x => x.id === c.id ? { ...x, balance: bal } : x); const nt = [tx, ...transactions];
@@ -1721,6 +1901,9 @@
             const savingsRate = monthlyIncome > 0 ? ((monthlyIncome - monthlyExpenses) / monthlyIncome) * 100 : 0;
             const committedRemainder = Math.max(0, unpaidBillsTotal) + Math.max(0, weeklyBudgetTotal - weeklySpentThisCycle);
             const safeToSpend = Math.max(0, totalFunds - committedRemainder);
+            const projectedMonthlySpend = daysInMonth > 0 ? (monthlyExpenses / Math.max(1, now.getDate())) * daysInMonth : monthlyExpenses;
+            const forecastMonthEnd = totalFunds - Math.max(0, projectedMonthlySpend - monthlyExpenses) - unpaidBillsTotal;
+            const forecastTone = forecastMonthEnd < 0 ? 'status-risk' : forecastMonthEnd < committedRemainder ? 'status-watch' : 'status-good';
 
             const filteredTx = transactions.filter(t => {
                 const query = searchQuery.toLowerCase();
@@ -1774,6 +1957,27 @@
             }
             return (
                 <div className="app-shell pb-32 mx-auto min-h-screen relative z-10">
+                    <aside className="desktop-rail no-print" aria-label="Primary navigation">
+                        <div className="px-3 py-3 mb-2">
+                            <div className="text-sm font-black text-white flex items-center gap-2"><Icon name="wallet" size={18} className="text-emerald-300" /> BudgetFlow</div>
+                            <p className="text-[10px] text-slate-500 mt-1">Personal finance workspace</p>
+                        </div>
+                        {[
+                            ['dashboard', 'layout-dashboard', 'Overview'],
+                            ['add', 'plus-circle', 'New transaction'],
+                            ['history', 'receipt-text', 'Transactions'],
+                            ['breakdown', 'chart-no-axes-combined', 'Insights'],
+                            ['settings', 'settings-2', 'Planning & tools']
+                        ].map(([target, icon, label]) => (
+                            <button key={target} onClick={() => setView(target)} className={`px-3 rounded-xl text-sm font-bold flex items-center gap-3 transition-colors ${view === target ? 'bg-emerald-400/15 text-emerald-200 border border-emerald-300/20' : 'text-slate-400 hover:text-white hover:bg-white/[0.06]'}`}>
+                                <Icon name={icon} size={18} /> {label}
+                            </button>
+                        ))}
+                        <div className="mt-auto px-3 py-3 border-t border-white/10">
+                            <p className="text-[10px] uppercase tracking-wide text-slate-500">Safe to spend</p>
+                            <p className="text-lg font-black text-emerald-300 mt-1">${safeToSpend.toFixed(0)}</p>
+                        </div>
+                    </aside>
                     {/* Auto-Cycle Renewed Banner */}
                     {cycleRenewedBanner && (
                         <div className="fixed top-0 left-0 right-0 z-[80] flex justify-center cycle-renew-banner">
@@ -1821,6 +2025,17 @@
                                             </div>
                                         </div>
                                         <h2 className="text-5xl md:text-6xl font-black mb-6 tracking-tight text-gradient-premium">${totalFunds.toFixed(0)}</h2>
+                                        <div className="flex flex-wrap gap-2 mb-5 no-print">
+                                            <button onClick={() => openQuickEntry('expense')} className="quick-entry-button px-4 rounded-xl bg-rose-400 text-slate-950 text-sm font-black flex items-center gap-2">
+                                                <Icon name="minus" size={16} /> Add expense
+                                            </button>
+                                            <button onClick={() => openQuickEntry('income')} className="quick-entry-button px-4 rounded-xl bg-emerald-300 text-slate-950 text-sm font-black flex items-center gap-2">
+                                                <Icon name="plus" size={16} /> Add income
+                                            </button>
+                                            <button onClick={() => setView('add')} className="quick-entry-button px-4 rounded-xl bg-white/10 text-slate-200 border border-white/10 text-sm font-bold flex items-center gap-2">
+                                                <Icon name="sliders-horizontal" size={16} /> Full editor
+                                            </button>
+                                        </div>
                                         <div className="grid grid-cols-3 gap-2.5">
                                             <div className="bg-white/[0.045] backdrop-blur-xl px-3 py-3 rounded-2xl border border-white/10">
                                                 <span className="text-[10px] text-cyan-300 font-bold uppercase tracking-wider flex items-center gap-1"><Icon name="timer" size={10} /> Cycle Ends</span>
@@ -1841,7 +2056,7 @@
                                 </div>
 
                                 {/* Budget Pace Indicator */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div className="grid grid-cols-2 gap-3">
                                     <div className="glass-card premium-metric p-4 rounded-2xl">
                                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide flex items-center gap-1"><Icon name="wallet" size={12} /> Safe to spend</p>
                                         <p className="text-2xl font-black text-emerald-300 mt-1">${safeToSpend.toFixed(0)}</p>
@@ -1858,9 +2073,9 @@
                                         <p className="text-[10px] text-slate-600 mt-1">{billsWithStatus.filter(b => !b.isPaid).length} unpaid this month</p>
                                     </div>
                                     <div className="glass-card premium-metric p-4 rounded-2xl">
-                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide flex items-center gap-1"><Icon name="activity" size={12} /> Month spend</p>
-                                        <p className="text-2xl font-black text-rose-300 mt-1">${monthlyExpenses.toFixed(0)}</p>
-                                        <p className="text-[10px] text-slate-600 mt-1">${dailyAvg.toFixed(0)} daily average</p>
+                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide flex items-center gap-1"><Icon name="calendar-range" size={12} /> Month-end forecast</p>
+                                        <p className={`text-2xl font-black mt-1 ${forecastTone}`}>${forecastMonthEnd.toFixed(0)}</p>
+                                        <p className="text-[10px] text-slate-600 mt-1">Projected ${projectedMonthlySpend.toFixed(0)} spend this month</p>
                                     </div>
                                 </div>
 
@@ -1899,14 +2114,12 @@
                                         const ringColor = isLow ? 'stroke-neon-red' : isWarning ? 'stroke-yellow-400' : 'stroke-neon-green';
                                         const circumference = 2 * Math.PI * 20;
                                         const strokeDashoffset = circumference - (pct / 100) * circumference;
-                                        const sparkData = categorySparklines[cat.id] || [0, 0, 0, 0, 0, 0, 0];
-                                        const sparkColor = isLow ? '#ff0055' : isWarning ? '#facc15' : '#00ff9d';
                                         return (
                                             <div key={cat.id}
-                                                className={`glass-card p-4 rounded-2xl transition-all duration-300 tap-feedback card-appear ${isLow ? 'border-rose-300/25' : isWarning ? 'border-amber-300/25' : 'hover:border-white/20'}`}
+                                                className={`glass-card p-4 rounded-2xl ${isLow ? 'border-rose-300/25' : isWarning ? 'border-amber-300/25' : 'border-white/10'}`}
                                             >
-                                                <div className="flex justify-between items-center">
-                                                    <div className="flex items-center gap-4">
+                                                <div className="category-row">
+                                                    <div className="category-details flex items-center gap-3">
                                                         <div className="relative">
                                                             <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
                                                                 <circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="4" />
@@ -1917,9 +2130,9 @@
                                                                 <Icon name={cat.icon} size={18} />
                                                             </div>
                                                         </div>
-                                                        <div>
+                                                        <div className="min-w-0">
                                                             <div className="flex items-center gap-2">
-                                                                <h3 className="font-bold text-white text-base tracking-tight">{cat.name}</h3>
+                                                                <h3 className="font-bold text-white text-base tracking-tight truncate">{cat.name}</h3>
                                                                 {cat.pinned && <span className="text-neon-amber text-xs">⭐</span>}
                                                                 {cat.recurring && <span className="text-neon-blue text-xs">🔁</span>}
                                                             </div>
@@ -1930,43 +2143,22 @@
                                                             </p>
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-14 opacity-55 hidden sm:block">
-                                                            <Sparkline data={sparkData} color={sparkColor} />
-                                                        </div>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); setQuickSpendCat(quickSpendCat === cat.id ? null : cat.id); setQuickSpendAmt(''); }}
-                                                            className="p-2 rounded-xl bg-white/5 hover:bg-rose-400/10 text-slate-400 hover:text-rose-300 transition-all border border-white/10 tap-feedback"
-                                                        >
-                                                            <Icon name="minus" size={16} />
-                                                        </button>
-                                                        <div className="text-right">
-                                                            <span className={`block text-xl font-black ${isLow ? 'text-rose-300' : isWarning ? 'text-amber-300' : 'text-white'}`}>${cat.balance.toFixed(0)}</span>
-                                                            <span className={`text-[10px] font-bold uppercase tracking-widest ${isLow ? 'text-rose-300' : isWarning ? 'text-amber-300' : 'text-slate-500'}`}>
-                                                                {isLow ? 'Overdrawn' : isWarning ? 'Low' : 'Left'}
-                                                            </span>
-                                                        </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openQuickEntry('expense', cat.id)}
+                                                        aria-label={`Record expense from ${cat.name}`}
+                                                        title={`Record expense from ${cat.name}`}
+                                                        className="category-spend-button rounded-xl bg-rose-400/15 text-rose-200 border border-rose-300/20"
+                                                    >
+                                                        <Icon name="minus" size={16} />
+                                                    </button>
+                                                    <div className="category-balance">
+                                                        <span className={`block text-xl font-black ${isLow ? 'text-rose-300' : isWarning ? 'text-amber-300' : 'text-white'}`}>${cat.balance.toFixed(0)}</span>
+                                                        <span className={`text-[10px] font-bold uppercase tracking-widest ${isLow ? 'text-rose-300' : isWarning ? 'text-amber-300' : 'text-slate-500'}`}>
+                                                            {isLow ? 'Overdrawn' : isWarning ? 'Low' : 'Left'}
+                                                        </span>
                                                     </div>
                                                 </div>
-                                                {/* Quick Spend Inline */}
-                                                {quickSpendCat === cat.id && (
-                                                    <div className="mt-4 flex gap-2 items-center animate-enter">
-                                                        <div className="flex gap-1.5">
-                                                            {[5, 10, 20].map(amt => (
-                                                                <button key={amt} onClick={() => handleQuickSpend(cat.id, amt)}
-                                                                    className="px-3 py-2 rounded-xl text-xs font-bold bg-glass-200 text-slate-300 hover:bg-neon-red/20 hover:text-neon-red transition-all border border-glass-200 tap-feedback">
-                                                                    ${amt}
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                        <input type="number" step="0.01" placeholder="$" value={quickSpendAmt} onChange={e => setQuickSpendAmt(e.target.value)}
-                                                            className="flex-1 p-2 rounded-xl bg-black/40 border border-glass-200 text-white text-sm font-bold text-center focus:border-neon-red" />
-                                                        <button onClick={() => handleQuickSpend(cat.id, quickSpendAmt)}
-                                                            className="p-2 rounded-xl bg-neon-red text-white font-bold text-sm tap-feedback">
-                                                            <Icon name="check" size={16} />
-                                                        </button>
-                                                    </div>
-                                                )}
                                             </div>
                                         )
                                     })}
@@ -2903,6 +3095,35 @@
                     )}
 
                     {/* Edit Transaction Modal */}
+                    {quickEntry.open && (
+                        <div className="fixed inset-0 bg-black/70 z-[75] flex items-end sm:items-center justify-center p-3 sm:p-6 backdrop-blur-sm animate-enter" role="dialog" aria-modal="true" aria-label="Quick transaction">
+                            <form onSubmit={saveQuickEntry} className="modal-surface w-full max-w-md rounded-2xl p-5 sm:p-6 space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-[10px] uppercase tracking-widest text-slate-500 font-black">Quick entry</p>
+                                        <h2 className="text-xl font-black text-white mt-1">Add {quickEntry.type === 'expense' ? 'expense' : 'income'}</h2>
+                                    </div>
+                                    <button type="button" onClick={() => setQuickEntry({ ...quickEntry, open: false })} className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10" aria-label="Close quick entry"><Icon name="x" size={18} /></button>
+                                </div>
+                                <div className="grid grid-cols-2 rounded-xl bg-black/25 p-1 border border-white/10">
+                                    <button type="button" onClick={() => setQuickEntry({ ...quickEntry, type: 'expense' })} className={`py-3 rounded-lg text-sm font-black ${quickEntry.type === 'expense' ? 'bg-rose-400 text-slate-950' : 'text-slate-400'}`}>Expense</button>
+                                    <button type="button" onClick={() => setQuickEntry({ ...quickEntry, type: 'income' })} className={`py-3 rounded-lg text-sm font-black ${quickEntry.type === 'income' ? 'bg-emerald-300 text-slate-950' : 'text-slate-400'}`}>Income</button>
+                                </div>
+                                <select value={quickEntry.categoryId} onChange={e => setQuickEntry({ ...quickEntry, categoryId: e.target.value })} className="w-full p-4 rounded-xl text-sm font-bold">
+                                    <option value="">Choose category</option>
+                                    {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+                                </select>
+                                <input autoFocus inputMode="decimal" type="number" min="0.01" step="0.01" value={quickEntry.amount} onChange={e => setQuickEntry({ ...quickEntry, amount: e.target.value })} placeholder="Amount" className="w-full p-4 rounded-xl text-2xl font-black" />
+                                <input type="text" value={quickEntry.description} onChange={e => setQuickEntry({ ...quickEntry, description: e.target.value })} placeholder="What was this for? (optional)" className="w-full p-4 rounded-xl text-sm font-semibold" />
+                                <div className="grid grid-cols-4 gap-2">
+                                    {[10, 25, 50, 100].map(amount => <button type="button" key={amount} onClick={() => setQuickEntry({ ...quickEntry, amount: String(amount) })} className="py-2.5 rounded-lg bg-white/5 border border-white/10 text-xs font-black text-slate-300 hover:bg-white/10">${amount}</button>)}
+                                </div>
+                                <button type="submit" className={`w-full py-4 rounded-xl text-sm font-black ${quickEntry.type === 'expense' ? 'bg-rose-400 text-slate-950' : 'bg-emerald-300 text-slate-950'}`}>Save transaction</button>
+                                <button type="button" onClick={() => { setQuickEntry({ ...quickEntry, open: false }); setView('add'); }} className="w-full py-2 text-xs font-bold text-slate-400 hover:text-white">Open full editor</button>
+                            </form>
+                        </div>
+                    )}
+
                     {editingTx && (
                         <div className="fixed inset-0 bg-black/90 z-[70] flex items-center justify-center p-6 backdrop-blur-xl animate-enter">
                             <form onSubmit={handleSaveTransactionEdit} className="bg-glass-nav border border-neon-green/40 rounded-[2rem] p-6 w-full max-w-md shadow-2xl space-y-4">
@@ -2932,12 +3153,12 @@
                     {/* App Confirmation */}
                     {confirmAction && (
                         <div className="fixed inset-0 bg-black/90 z-[75] flex items-center justify-center p-6 backdrop-blur-xl animate-enter">
-                            <div className="bg-glass-nav border border-white/20 rounded-[2rem] p-8 w-full max-w-sm shadow-2xl">
+                            <div className="modal-surface rounded-2xl p-6 w-full max-w-sm">
                                 <h2 className="text-2xl font-black text-white mb-2">{confirmAction.title}</h2>
                                 <p className="text-slate-400 text-sm mb-6 leading-relaxed">{confirmAction.message}</p>
                                 <div className="flex gap-3">
-                                    <button onClick={() => setConfirmAction(null)} className="flex-1 py-4 font-bold text-slate-400 bg-glass-100 rounded-2xl hover:bg-glass-200">Cancel</button>
-                                    <button onClick={async () => { const action = confirmAction.onConfirm; setConfirmAction(null); await action(); }} className="flex-1 py-4 font-bold text-white bg-neon-red rounded-2xl shadow-xl hover:bg-red-500 transition-all">{confirmAction.confirmLabel}</button>
+                                    <button disabled={isConfirming} onClick={() => setConfirmAction(null)} className="flex-1 py-4 font-bold text-slate-400 bg-glass-100 rounded-xl hover:bg-glass-200">Cancel</button>
+                                    <button disabled={isConfirming} onClick={runConfirmAction} className="flex-1 py-4 font-bold text-white bg-rose-400 rounded-xl transition-colors">{isConfirming ? 'Working...' : confirmAction.confirmLabel}</button>
                                 </div>
                             </div>
                         </div>
